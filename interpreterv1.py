@@ -20,29 +20,41 @@ class Interpreter(InterpreterBase):
     def run(self, program):
         ast = parse_program(program)
         if not ast:
-            # ast already checked for None in brewparse.py
-            pass 
+            pass # ast already checked for None in brewparse.py
         if self.trace_output:
             print("Got AST from parser.")
         # Reset program's variables
         self.vars = {}
+        # Run program if contains main function
+        if ast.elem_type == "program":
+            # Find finctions
+            if "functions" in ast.dict:
+                for func_elem in ast.dict["functions"]:
+                    # Get main function
+                    if func_elem.dict.get("name", None) == "main":
+                        self.__do_function(func_elem)
+                        break
+                else:
+                    super().error(ErrorType.NAME_ERROR,
+                                  "No main() function was found",
+                    )
 
-    def __run_function(self, func_elem):
+    def __do_function(self, func_elem):
         # Verify function structure
-        if func_elem.elem_type != "function" or "name" not in func_elem.dict or "statements" not in func_elem.dict:
-            print("ERROR: Running __run_function on invalid function element! Aborting.")
+        if func_elem.elem_type != "func" or "name" not in func_elem.dict or  "statements" not in func_elem.dict:
+            print("ERROR: Running __do_function on invalid function element! Aborting.")
             exit()
         # Trace output
         if self.trace_output:
             print(f'Running function: {func_elem.dict["name"]}.')
         # Function logic
         for statement in func_elem.dict["statements"]:
-            self.__run_statement(statement)
+            self.__do_statement(statement)
     
-    def __run_statement(self, statement_elem):
+    def __do_statement(self, statement_elem):
         # Verify statement structure
         if statement_elem.elem_type not in ["=", "fcall"] or "name" not in statement_elem.dict:
-            print("ERROR: Running __run_statement on invalid statement element! Aborting.")
+            print("ERROR: Running __do_statement on invalid statement element! Aborting.")
             exit()
 
         # Trace output
@@ -72,6 +84,7 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print("Statement is fcall.")
             # Fcall logic
+            self.__do_fcall(statement_elem)
             # TODO: fcall logic
 
         # UNREACHABLE
@@ -107,7 +120,7 @@ class Interpreter(InterpreterBase):
             res = self.vars[var_name]
 
         # Value type
-        elif expr_elem.elem_typr in VALUE:
+        elif expr_elem.elem_type in VALUE:
             # Verify value structure
             if "val" not in expr_elem.dict:
                 print("ERROR: Value expression has no val! Aborting.")
@@ -133,7 +146,7 @@ class Interpreter(InterpreterBase):
                 if self.trace_output:
                     print(f"Evaluting operator expression {expr_elem.elem_type} {op1} {op2}.")
                 # Operator logic
-                if not isinstance(op1, int) or isinstance(op2, int):
+                if not isinstance(op1, int) or not isinstance(op2, int):
                     super().error(ErrorType.TYPE_ERROR,
                                  "Incompatible types for arithmetic operation",
                     )
@@ -141,8 +154,8 @@ class Interpreter(InterpreterBase):
                 res =  OPERATORS[expr_elem.elem_type](op1, op2)
             # Fcall expression
             elif expr_elem.elem_type == "fcall":
-                pass # TODO: implement fcall
-                res = None
+                res = self.__do_fcall(expr_elem)
+                # TODO: check for NULL res
             # Not op or fcall
             else:
                 print ("ERROR: Expression expression not operator or fcall! Aborting.")
@@ -155,4 +168,33 @@ class Interpreter(InterpreterBase):
 
         return res
 
-    def __run_fcall(self, function_elem):
+    def __do_fcall(self, fcall_elem):
+        # Verify fcall structure
+        if fcall_elem.elem_type != "fcall" or "name" not in fcall_elem.dict or "args" not in fcall_elem.dict:
+            print("ERROR: Running __do_fcall on invalid fcall element! Aborting.")
+            exit()
+        # Trace output
+        if self.trace_output:
+            print(f'Performing function call {fcall_elem.dict["name"]}')
+        # Fcall logic
+        if fcall_elem.dict["name"] == "print":
+            to_print = "".join([str(self.__get_expr(arg_elem)) for arg_elem in fcall_elem.dict["args"]])
+            super().output(to_print)
+            return None
+        elif fcall_elem.dict["name"] == "inputi":
+            args = fcall_elem.dict["args"]
+            if len(args) > 1:
+                super().error(ErrorType.NAME_ERROR,
+                              f"No inputi() function found that takes > 1 parameter",
+                )
+            else:
+                if args:
+                    prompt = str(self.__get_expr(args[0]))
+                    super().output(prompt)
+                user_input = int(super().get_input())
+                return user_input
+        else:
+            super().error(ErrorType.NAME_ERROR,
+                          f'No matching function {fcall_elem.dict["name"]} found.',
+            )
+        return None
