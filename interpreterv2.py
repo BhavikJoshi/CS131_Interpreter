@@ -49,9 +49,9 @@ class Interpreter(InterpreterBase):
                 super().error(ErrorType.NAME_ERROR,
                                 "No main() function was found",
                 )
-            self.__do_function(self.funcs[("main", 0)])
+            self.__do_function(self.funcs[("main", 0)], [])
 
-    def __do_function(self, func_elem):
+    def __do_function(self, func_elem, args_expr):
         # Verify function structure
         if func_elem.elem_type != "func" or "name" not in func_elem.dict or "statements" not in func_elem.dict or "args" not in func_elem.dict:
             print("ERROR: Running __do_function on invalid function element! Aborting.")
@@ -61,6 +61,8 @@ class Interpreter(InterpreterBase):
             print(f'Running function: {func_elem.dict["name"]}.')
         # Function logic
         self.vars.push(is_func = True)
+        for arg, arg_expr in zip(func_elem.dict["args"], args_expr):
+            self.vars.add_arg(self.__get_arg_name(arg), self.__get_expr(arg_expr))
         for statement in func_elem.dict["statements"]:
             res, returns = self.__do_statement(statement)
             if returns == True:
@@ -336,8 +338,21 @@ class Interpreter(InterpreterBase):
                     super().output(prompt)
                 user_input = str(super().get_input())
                 res = user_input
+        
+        # Function node
+        elif (fcall_elem.dict["name"], len(fcall_elem.dict["args"])) in self.funcs:
+            res = self.__do_function(self.funcs[(fcall_elem.dict["name"], len(fcall_elem.dict["args"]))], fcall_elem.dict["args"])
+        
+        # Else
         else:
             super().error(ErrorType.NAME_ERROR,
-                          f'No matching function {fcall_elem.dict["name"]} found.',
+                          f'No matching function {(fcall_elem.dict["name"], len(fcall_elem.dict["args"]))} found.',
             )
+
         return res
+
+    def __get_arg_name(self, arg_elem):
+        if arg_elem.elem_type != "arg" or "name" not in arg_elem.dict:
+            print("ERROR: Running __get_arg_name on invalid arg element! Aborting.")
+            exit()
+        return arg_elem.dict["name"]
