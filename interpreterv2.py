@@ -10,6 +10,7 @@ from brewin_types import *
 from var_scope import *
 import copy
 
+
 class Interpreter(InterpreterBase):
 
     NIL = BrewinNil()
@@ -55,7 +56,6 @@ class Interpreter(InterpreterBase):
         # Verify function structure
         if func_elem.elem_type != "func" or "name" not in func_elem.dict or "statements" not in func_elem.dict or "args" not in func_elem.dict:
             print("ERROR: Running __do_function on invalid function element! Aborting.")
-            exit()
         # Trace output
         if self.trace_output:
             print(f'Running function: {func_elem.dict["name"]}.')
@@ -82,7 +82,6 @@ class Interpreter(InterpreterBase):
             # Verify assignment struvture
             if "expression" not in statement_elem.dict or "name" not in statement_elem.dict:
                 print("ERROR: Statement element has no expression or name! Aborting.")
-                exit()
             # Trace output
             if self.trace_output:
                 print(f'Statement is assignment with name {statement_elem.dict["name"]}.')
@@ -96,7 +95,6 @@ class Interpreter(InterpreterBase):
             # Verify fcall structure
             if "args" not in statement_elem.dict or "name" not in statement_elem.dict:
                 print("ERROR: Fcall element has no args or name! Aborting.")
-                exit()
             # Trace output
             if self.trace_output:
                 print("Statement is fcall.")
@@ -107,17 +105,16 @@ class Interpreter(InterpreterBase):
             if "condition" not in statement_elem.dict or "statements" not in statement_elem.dict or \
             "else_statements" not in statement_elem.dict:
                 print("ERROR: Statement if element has no condition or statements or else_statements! Aborting.")
-                exit()
             # Trace output
             if self.trace_output:
                 print("Statement is if.")
             cond = self.__get_expr(statement_elem.dict["condition"])
-            if not isinstance(cond, bool):
+            if not isinstance(cond, BrewinBool):
                 super().error(ErrorType.TYPE_ERROR,
                     f"Condition expressions must be bool types.",
                 )
             statements = []
-            if cond:
+            if cond.value:
                 statements = statement_elem.dict["statements"]
             else:
                 if statement_elem.dict["else_statements"] is not None:
@@ -131,17 +128,16 @@ class Interpreter(InterpreterBase):
         elif statement_elem.elem_type == "while":
             if "condition" not in statement_elem.dict or "statements" not in statement_elem.dict:
                 print("ERROR: Statement while element has no condition or statements Aborting.")
-                exit()
             # Trace output
             if self.trace_output:
                 print("Statement is while.")
             cond = self.__get_expr(statement_elem.dict["condition"])
-            if not isinstance(cond, bool):
+            if not isinstance(cond, BrewinBool):
                 super().error(ErrorType.TYPE_ERROR,
                     f"Condition expressions must be bool types.",
                 )
             res, returns = None, False
-            while cond:
+            while cond.value:
                 for statement in statement_elem.dict["statements"]:
                     res, returns = self.__do_statement(statement)
                     if returns == True:
@@ -149,7 +145,7 @@ class Interpreter(InterpreterBase):
                 if returns == True:
                     break
                 cond = self.__get_expr(statement_elem.dict["condition"])
-                if returns == False and not isinstance(cond, bool):
+                if returns == False and not isinstance(cond, BrewinBool):
                     super().error(ErrorType.TYPE_ERROR,
                         f"Condition expressions must be bool types.",
                 )
@@ -157,7 +153,6 @@ class Interpreter(InterpreterBase):
         elif statement_elem.elem_type == "return":
             if "expression" not in statement_elem.dict:
                 print("ERROR: Statement return element has no expression Aborting.")
-                exit()
             if statement_elem.dict["expression"] is not None:
                 res = self.__get_expr(statement_elem.dict["expression"])
             else:
@@ -166,7 +161,6 @@ class Interpreter(InterpreterBase):
 
         else:
             print(f"ERROR: Unknown statement type {statement_elem.elem_type}. Aborting.")
-            exit()
   
         return copy.deepcopy(res), returns
 
@@ -176,18 +170,18 @@ class Interpreter(InterpreterBase):
                     "-" : lambda x, y: x - y,
                     "*" : lambda x, y: x * y,
                     "/" : lambda x, y: x // y,
-                    "==" : lambda x, y: x == y,
-                    "!=" : lambda x, y: x != y,
-                    "<" : lambda x, y: x < y,
-                    "<=" : lambda x, y: x <= y,
-                    ">" : lambda x, y: x > y,
-                    ">=": lambda x, y: x >= y,
-                    "neg" : lambda x, y: -x,
+                    "neg" : lambda x, y: x * -1,
+                    "==" : lambda x, y: Interpreter.TRUE if (x == y)  else Interpreter.FALSE,
+                    "!=" : lambda x, y: Interpreter.TRUE if (x != y)  else Interpreter.FALSE,
+                    "<" : lambda x, y:  Interpreter.TRUE if (x < y)   else Interpreter.FALSE,
+                    "<=" : lambda x, y: Interpreter.TRUE if (x <= y)  else Interpreter.FALSE,
+                    ">" : lambda x, y:  Interpreter.TRUE if (x > y)   else Interpreter.FALSE,
+                    ">=": lambda x, y:  Interpreter.TRUE if (x >= y)  else Interpreter.FALSE,
                 }
         
         STR_OPS = { "+" : lambda x, y: x + y,
-                    "==" : lambda x, y: x == y,
-                    "!=" : lambda x, y: x != y,
+                    "==" : lambda x, y: Interpreter.TRUE if (x == y)  else Interpreter.FALSE,
+                    "!=" : lambda x, y: Interpreter.TRUE if (x != y)  else Interpreter.FALSE,
                 }
         
         BOOL_OPS = { "||" : lambda x, y: Interpreter.TRUE if (x.value or y.value)  else Interpreter.FALSE,
@@ -202,8 +196,8 @@ class Interpreter(InterpreterBase):
                 BrewinBool: BOOL_OPS,
             }
 
-        DIFF_TYPES = { "==" : False,
-                       "!=" : True,
+        DIFF_TYPES = { "==" : Interpreter.FALSE,
+                       "!=" : Interpreter.TRUE,
                     }
 
         VAR = ["var"]
@@ -218,7 +212,6 @@ class Interpreter(InterpreterBase):
             # Verify variable structure
             if "name" not in expr_elem.dict:
                 print("ERROR: Variable expression has no name! Aborting.")
-                exit()
             # Trace output
             if self.trace_output:
                 print(f'Evaluating variable with name {expr_elem.dict["name"]}.')
@@ -235,7 +228,6 @@ class Interpreter(InterpreterBase):
             # Verify value structure
             if expr_elem.elem_type != "nil" and "val" not in expr_elem.dict:
                 print("ERROR: Non-nil value expression has no val! Aborting.")
-                exit()
             # Trace output
             if self.trace_output:
                 print(f'Evaluting value w val {expr_elem.dict.get("val", None)}.')
@@ -250,7 +242,6 @@ class Interpreter(InterpreterBase):
             # Verify operator structure
             if "op1" not in expr_elem.dict:
                 print("ERROR: Expression expression has no op1! Aborting.")
-                exit()
             # Get operands
             op1 = self.__get_expr(expr_elem.dict["op1"])
             if "op2" not in expr_elem.dict:
@@ -291,7 +282,6 @@ class Interpreter(InterpreterBase):
         # Not var, value, expr, or fcall
         else:
             print("ERROR: expression type not VAR, VALUE, or EXPR! Aborting.")
-            exit()  
 
         return copy.deepcopy(res)
 
@@ -299,7 +289,6 @@ class Interpreter(InterpreterBase):
         # Verify fcall structure
         if fcall_elem.elem_type != "fcall" or "name" not in fcall_elem.dict or "args" not in fcall_elem.dict:
             print("ERROR: Running __do_fcall on invalid fcall element! Aborting.")
-            exit()
         # Trace output
         if self.trace_output:
             print(f'Performing function call {fcall_elem.dict["name"]}')
@@ -354,5 +343,4 @@ class Interpreter(InterpreterBase):
     def __get_arg_name(self, arg_elem):
         if arg_elem.elem_type != "arg" or "name" not in arg_elem.dict:
             print("ERROR: Running __get_arg_name on invalid arg element! Aborting.")
-            exit()
         return arg_elem.dict["name"]
