@@ -113,6 +113,8 @@ class Interpreter(InterpreterBase):
                 super().error(ErrorType.TYPE_ERROR,
                     f"Condition expressions must be bool types.",
                 )
+            # If logic
+            self.vars.push()
             statements = []
             if cond.value:
                 statements = statement_elem.dict["statements"]
@@ -124,6 +126,7 @@ class Interpreter(InterpreterBase):
                 res, returns = self.__do_statement(statement)
                 if returns == True:
                     break
+            self.vars.pop()
         
         elif statement_elem.elem_type == "while":
             if "condition" not in statement_elem.dict or "statements" not in statement_elem.dict:
@@ -137,6 +140,8 @@ class Interpreter(InterpreterBase):
                     f"Condition expressions must be bool types.",
                 )
             res, returns = None, False
+            # While logic
+            self.vars.push()
             while cond.value:
                 for statement in statement_elem.dict["statements"]:
                     res, returns = self.__do_statement(statement)
@@ -149,6 +154,7 @@ class Interpreter(InterpreterBase):
                     super().error(ErrorType.TYPE_ERROR,
                         f"Condition expressions must be bool types.",
                 )
+            self.vars.pop()
 
         elif statement_elem.elem_type == "return":
             if "expression" not in statement_elem.dict:
