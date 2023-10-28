@@ -177,28 +177,34 @@ class Interpreter(InterpreterBase):
                     "<=" : lambda x, y: Interpreter.TRUE if (x <= y)  else Interpreter.FALSE,
                     ">" : lambda x, y:  Interpreter.TRUE if (x > y)   else Interpreter.FALSE,
                     ">=": lambda x, y:  Interpreter.TRUE if (x >= y)  else Interpreter.FALSE,
-                }
+        }
         
         STR_OPS = { "+" : lambda x, y: x + y,
                     "==" : lambda x, y: Interpreter.TRUE if (x == y)  else Interpreter.FALSE,
                     "!=" : lambda x, y: Interpreter.TRUE if (x != y)  else Interpreter.FALSE,
-                }
+        }
         
         BOOL_OPS = { "||" : lambda x, y: Interpreter.TRUE if (x.value or y.value)  else Interpreter.FALSE,
                      "&&" : lambda x, y: Interpreter.TRUE if (x.value and y.value) else Interpreter.FALSE,
                      "!" : lambda x, y:  Interpreter.TRUE if (not x.value)         else Interpreter.FALSE,
                      "==" : lambda x, y: Interpreter.TRUE if (x.value == y.value)  else Interpreter.FALSE,
                      "!=" : lambda x, y: Interpreter.TRUE if (x.value != y.value)  else Interpreter.FALSE,
-                }
+        }
+
+        NIL_OPS = {
+                    "==" : lambda x, y: Interpreter.TRUE,
+                    "!=" : lambda x, y: Interpreter.FALSE,
+        }
 
         OPS = { int: INT_OPS,
                 str: STR_OPS,
                 BrewinBool: BOOL_OPS,
-            }
+                BrewinNil: NIL_OPS,
+        }
 
-        DIFF_TYPES = { "==" : Interpreter.FALSE,
-                       "!=" : Interpreter.TRUE,
-                    }
+        DIFF_TYPES = { "==" : lambda x, y: Interpreter.FALSE,
+                       "!=" : lambda x, y: Interpreter.TRUE,
+        }
 
         VAR = ["var"]
         VALUE = ["int", "string", "bool", "nil"]
