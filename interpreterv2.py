@@ -8,6 +8,7 @@ from element import *
 from brewparse import *
 from nil import *
 from var_scope import *
+import copy
 
 class Interpreter(InterpreterBase):
 
@@ -29,43 +30,49 @@ class Interpreter(InterpreterBase):
             print("Got AST from parser.")
         # Reset program's variables
         self.vars = VarScope()
+        self.funcs = {}
         # Run program if contains main function
         if ast.elem_type == "program":
             # Find finctions
             if "functions" in ast.dict:
                 for func_elem in ast.dict["functions"]:
-                    # Get main function
-                    if func_elem.dict.get("name", None) == "main":
-                        self.__do_function(func_elem)
-                        break
-                else:
-                    super().error(ErrorType.NAME_ERROR,
-                                  "No main() function was found",
-                    )
+                    # Add to function mapping dictionary
+                    func_tup = (func_elem.dict.get("name", None), len(func_elem.dict.get("args", [])))
+                    if func_tup in self.funcs:
+                        super().error(ErrorType.NAME_ERROR,
+                                "Two functions declared with the same name and argument count. Aborting.",
+                        )
+                    self.funcs[func_tup] = func_elem
+            if ("main", 0) not in self.funcs:
+                super().error(ErrorType.NAME_ERROR,
+                                "No main() function was found",
+                )
+            self.__do_function(self.funcs[("main", 0)])
 
     def __do_function(self, func_elem):
         # Verify function structure
-        if func_elem.elem_type != "func" or "name" not in func_elem.dict or  "statements" not in func_elem.dict:
+        if func_elem.elem_type != "func" or "name" not in func_elem.dict or "statements" not in func_elem.dict or "args" not in func_elem.dict:
             print("ERROR: Running __do_function on invalid function element! Aborting.")
             exit()
         # Trace output
         if self.trace_output:
             print(f'Running function: {func_elem.dict["name"]}.')
         # Function logic
-        self.vars.push()
-        # TODO: allow returning from nested statements all the way up to here, make sure VarScope functionality is maintained
+        self.vars.push(is_func = True)
         for statement in func_elem.dict["statements"]:
-            if statement.elem_type == "return":
-                res = self.__do_statement(statement)
-                return res
-            self.__do_statement(statement)
-        self.vars.pop()
+            res, returns = self.__do_statement(statement)
+            if returns == True:
+                break
+        self.vars.pop(is_func = True)
+        return res
+
     
     def __do_statement(self, statement_elem):
         # Trace output
         if self.trace_output:
             print(f'Running statement {statement_elem.elem_type}.')
 
+        res, returns = None, False
         # Statement logic (assignment)
         if statement_elem.elem_type == "=":
             # Verify assignment struvture
@@ -78,6 +85,7 @@ class Interpreter(InterpreterBase):
             # Assignment logic
             value = self.__get_expr(statement_elem.dict["expression"])
             self.vars.set(statement_elem.dict["name"], value)
+            res, returns = None, False
 
         # Statment logic (fcall)
         elif statement_elem.elem_type == "fcall":
@@ -89,7 +97,7 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print("Statement is fcall.")
             # Fcall logic
-            self.__do_fcall(statement_elem)
+            res, returns = self.__do_fcall(statement_elem), False
             
         elif statement_elem.elem_type == "if":
             if "condition" not in statement_elem.dict or "statements" not in statement_elem.dict or \
@@ -100,17 +108,21 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print("Statement is if.")
             cond = self.__get_expr(statement_elem.dict["condition"])
+            if not isinstance(cond, bool):
+                super().error(ErrorType.TYPE_ERROR,
+                    f"Condition expressions must be bool types.",
+                )
             statements = []
             if cond:
                 statements = statement_elem.dict["statements"]
             else:
                 if statement_elem.dict["else_statements"] is not None:
                     statements = statement_elem.dict["else_statements"]
+            res, returns = None, False
             for statement in statements:
-                if statement.elem_type == "return":
-                    res = self.__do_statement(statement)
-                    return res
-                self.__do_statement(statement)
+                res, returns = self.__do_statement(statement)
+                if returns == True:
+                    break
         
         elif statement_elem.elem_type == "while":
             if "condition" not in statement_elem.dict or "statements" not in statement_elem.dict:
@@ -120,17 +132,25 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print("Statement is while.")
             cond = self.__get_expr(statement_elem.dict["condition"])
+            if not isinstance(cond, bool):
+                super().error(ErrorType.TYPE_ERROR,
+                    f"Condition expressions must be bool types.",
+                )
+            res, returns = None, False
             while cond:
                 for statement in statement_elem.dict["statements"]:
-                    if statement.elem_type == "return":
-                        res = self.__do_statement(statement)
-                        return res
-                    self.__do_statement(statement)
+                    res, returns = self.__do_statement(statement)
+                    if returns == True:
+                        break
+                if returns == True:
+                    break
+                cond = self.__get_expr(statement_elem.dict["condition"])
+                if returns == False and not isinstance(cond, bool):
+                    super().error(ErrorType.TYPE_ERROR,
+                        f"Condition expressions must be bool types.",
+                )
 
-        else:
-            print(f"ERROR: Unknown statement type {statement_elem.elem_type}. Aborting.")
-            exit()
-        '''elif statement_elem.elem_type == "return":
+        elif statement_elem.elem_type == "return":
             if "expression" not in statement_elem.dict:
                 print("ERROR: Statement return element has no expression Aborting.")
                 exit()
@@ -138,10 +158,13 @@ class Interpreter(InterpreterBase):
                 res = self.__get_expr(statement_elem.dict["expression"])
             else:
                 res = Interpreter.NIL
-            return res'''
-  
+            returns = True
 
-        # UNREACHABLE
+        else:
+            print(f"ERROR: Unknown statement type {statement_elem.elem_type}. Aborting.")
+            exit()
+  
+        return copy.deepcopy(res), returns
 
     def __get_expr(self, expr_elem):
 
@@ -181,7 +204,7 @@ class Interpreter(InterpreterBase):
 
         VAR = ["var"]
         VALUE = ["int", "string", "bool", "nil"]
-        EXPR = ["+", "-", '*', '/','==', '<', '<=', '>', '>=', '!=', 'neg', '!']
+        EXPR = ["+", "-", '*', '/','==', '<', '<=', '>', '>=', '!=', 'neg', '!', '||', '&&']
         FCALL = ["fcall"]
 
         res = None
@@ -250,7 +273,7 @@ class Interpreter(InterpreterBase):
                        f"No supported operations for type {type(op1)}",
                     )
                 if expr_elem.elem_type not in OPS[type(op1)]:
-                    super().error(ErrorType.NAME_ERROR,
+                    super().error(ErrorType.TYPE_ERROR,
                        f"Unsupported operation {expr_elem.elem_type} for type {type(op1)}",
                     )
                 res = OPS[type(op1)][expr_elem.elem_type](op1, op2)
@@ -263,7 +286,7 @@ class Interpreter(InterpreterBase):
             print("ERROR: expression type not VAR, VALUE, or EXPR! Aborting.")
             exit()  
 
-        return res
+        return copy.deepcopy(res)
 
     def __do_fcall(self, fcall_elem):
         # Verify fcall structure
@@ -273,11 +296,16 @@ class Interpreter(InterpreterBase):
         # Trace output
         if self.trace_output:
             print(f'Performing function call {fcall_elem.dict["name"]}')
+
+        res = None
         # Fcall logic
         if fcall_elem.dict["name"] == "print":
-            to_print = "".join([str(self.__get_expr(arg_elem)) for arg_elem in fcall_elem.dict["args"]])
+            to_print = "".join([(str(self.__get_expr(arg_elem)).lower() if isinstance(self.__get_expr(arg_elem), bool) \
+                               else str(self.__get_expr(arg_elem))) for arg_elem in fcall_elem.dict["args"]])
             super().output(to_print)
-            return Interpreter.NIL
+            res = Interpreter.NIL
+
+        # Inputi
         elif fcall_elem.dict["name"] == "inputi":
             args = fcall_elem.dict["args"]
             if len(args) > 1:
@@ -289,7 +317,9 @@ class Interpreter(InterpreterBase):
                     prompt = str(self.__get_expr(args[0]))
                     super().output(prompt)
                 user_input = int(super().get_input())
-                return user_input
+                res = user_input
+
+        #Inputs
         elif fcall_elem.dict["name"] == "inputs":
             args = fcall_elem.dict["args"]
             if len(args) > 1:
@@ -301,9 +331,9 @@ class Interpreter(InterpreterBase):
                     prompt = str(self.__get_expr(args[0]))
                     super().output(prompt)
                 user_input = str(super().get_input())
-                return user_input
+                res = user_input
         else:
             super().error(ErrorType.NAME_ERROR,
                           f'No matching function {fcall_elem.dict["name"]} found.',
             )
-        return None
+        return res
