@@ -6,13 +6,15 @@ Fall 2023
 from intbase import *
 from element import *
 from brewparse import *
-from nil import *
+from brewin_types import *
 from var_scope import *
 import copy
 
 class Interpreter(InterpreterBase):
 
-    NIL = Nil()
+    NIL = BrewinNil()
+    TRUE = BrewinBool(True)
+    FALSE = BrewinBool(False)
 
     def __init__(self, console_output=True, inp=None, trace_output=False):
         super().__init__(console_output, inp)   # call InterpreterBase's constructor
@@ -186,16 +188,16 @@ class Interpreter(InterpreterBase):
                     "!=" : lambda x, y: x != y,
                 }
         
-        BOOL_OPS = { "||" : lambda x, y: x or y,
-                     "&&" : lambda x, y: x and y,
-                     "!" : lambda x, y: not x,
-                     "==" : lambda x, y: x == y,
-                     "!=" : lambda x, y: x != y,
+        BOOL_OPS = { "||" : lambda x, y: Interpreter.TRUE if (x.value or y.value)  else Interpreter.FALSE,
+                     "&&" : lambda x, y: Interpreter.TRUE if (x.value and y.value) else Interpreter.FALSE,
+                     "!" : lambda x, y:  Interpreter.TRUE if (not x.value)         else Interpreter.FALSE,
+                     "==" : lambda x, y: Interpreter.TRUE if (x.value == y.value)  else Interpreter.FALSE,
+                     "!=" : lambda x, y: Interpreter.TRUE if (x.value != y.value)  else Interpreter.FALSE,
                 }
 
         OPS = { int: INT_OPS,
                 str: STR_OPS,
-                bool: BOOL_OPS,
+                BrewinBool: BOOL_OPS,
             }
 
         DIFF_TYPES = { "==" : False,
@@ -236,7 +238,10 @@ class Interpreter(InterpreterBase):
             if self.trace_output:
                 print(f'Evaluting value w val {expr_elem.dict.get("val", None)}.')
             # Value logic
-            res = expr_elem.dict.get("val", Interpreter.NIL)
+            if expr_elem.elem_type == "bool":
+                res = Interpreter.TRUE if expr_elem.dict["val"] else Interpreter.FALSE
+            else:
+                res = expr_elem.dict.get("val", Interpreter.NIL)
 
         # Expr type
         elif expr_elem.elem_type in EXPR:
@@ -300,8 +305,7 @@ class Interpreter(InterpreterBase):
         res = None
         # Fcall logic
         if fcall_elem.dict["name"] == "print":
-            to_print = "".join([(str(self.__get_expr(arg_elem)).lower() if isinstance(self.__get_expr(arg_elem), bool) \
-                               else str(self.__get_expr(arg_elem))) for arg_elem in fcall_elem.dict["args"]])
+            to_print = "".join([str(self.__get_expr(arg_elem)) for arg_elem in fcall_elem.dict["args"]])
             super().output(to_print)
             res = Interpreter.NIL
 
