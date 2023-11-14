@@ -33,27 +33,37 @@ class Interpreter(InterpreterBase):
             print("Got AST from parser.")
         # Reset program's variables
         self.vars = VarScope()
-        self.funcs = {}
+        self.vars.push()
         # Run program if contains main function
         if ast.elem_type == "program":
             # Find finctions
             if "functions" in ast.dict:
                 for func_elem in ast.dict["functions"]:
                     # Add to function mapping dictionary
-                    func_tup = (func_elem.dict.get("name", None), len(func_elem.dict.get("args", [])))
-                    if func_tup in self.funcs:
-                        super().error(ErrorType.NAME_ERROR,
-                                "Two functions declared with the same name and argument count. Aborting.",
-                        )
-                    self.funcs[func_tup] = func_elem
+                    func_name = func_elem.dict.get("name", None)
+                    func_num_args = len(func_elem.dict.get("args", []))
+                    # If a function with the name already exists
+                    if self.vars.get(func_name) is not None:
+                        # If a function with the num params already exists
+                        if self.vars.get(func_name).get(func_num_args) is not None:
+                            super().error(ErrorType.NAME_ERROR,
+                                    "Two functions declared with the same name and argument count. Aborting.",
+                            )
+                        else:
+                            # Add function
+                            self.vars.get(func_name).set(func_num_args, func_elem, closure = None)
+                    else:
+                        # Add function
+                        self.vars.set(func_name, BrewinFunction(init_term=(func_num_args, func_elem, None)))
             # Find main with 0 arguments
-            if ("main", 0) not in self.funcs:
+            if self.vars.get("main") is None or self.vars.get("main").get(0) is None:
                 super().error(ErrorType.NAME_ERROR,
                                 "No main() function was found",
                 )
-            self.__do_function(self.funcs[("main", 0)], [])
+            main_func, closure = self.vars.get("main").get(0)
+            self.__do_function(main_func, [], closure)
 
-    def __do_function(self, func_elem, args_expr):
+    def __do_function(self, func_elem, args_expr, closure = None):
         # Verify function structure
         if func_elem.elem_type != "func" or "name" not in func_elem.dict or "statements" not in func_elem.dict or "args" not in func_elem.dict:
             print("ERROR: Running __do_function on invalid function element! Aborting.")
@@ -227,12 +237,18 @@ class Interpreter(InterpreterBase):
                     "/"  :  lambda bx, iy: self.__coerce_to_int(bx) + iy,
         }
 
+        FUNCTION_OPS = {
+                    '==': lambda x, y: Interpreter.TRUE if (x is y)     else Interpreter.FALSE,
+                    '!=': lambda x, y: Interpreter.TRUE if (x is not y) else Interpreter.FALSE,
+        }
+
         OPS = { (int, int): INT_OPS,
                 (str, str): STR_OPS,
                 (BrewinBool, BrewinBool): BOOL_OPS,
                 (BrewinNil, BrewinNil): NIL_OPS,
                 (int, BrewinBool): INT_BOOL_COERCION_OPS,
                 (BrewinBool, int): BOOL_INT_COERCION_OPS,
+                (BrewinFunction, BrewinFunction): FUNCTION_OPS,
         }
 
         DIFF_TYPES = { "==" : lambda x, y: Interpreter.FALSE,
@@ -260,6 +276,10 @@ class Interpreter(InterpreterBase):
             if res is None:
                 super().error(ErrorType.NAME_ERROR,
                              f"Variable {var_name} has not been defined"
+                )
+            if isinstance(res, BrewinFunction) and res.is_overloaded():
+                super().error(ErrorType.NAME_ERROR,
+                             f"Ambiguous reference to overloaded function"
                 )
 
         # Value type
@@ -311,7 +331,7 @@ class Interpreter(InterpreterBase):
         else:
             print("ERROR: expression type not VAR, VALUE, or EXPR! Aborting.")
 
-        return copy.deepcopy(res)
+        return res
 
     def __do_fcall(self, fcall_elem):
         # Verify fcall structure
@@ -358,14 +378,23 @@ class Interpreter(InterpreterBase):
                 res = user_input
         
         # Function node
-        elif (fcall_elem.dict["name"], len(fcall_elem.dict["args"])) in self.funcs:
-            res = self.__do_function(self.funcs[(fcall_elem.dict["name"], len(fcall_elem.dict["args"]))], fcall_elem.dict["args"])
+        elif self.vars.get(fcall_elem.dict["name"]) is not None:
+            if not isinstance(self.vars.get(fcall_elem.dict["name"]), BrewinFunction):
+                super().error(ErrorType.TYPE_ERROR,
+                    f'Cannot treat non function variable as a function.',
+                )
+            elif self.vars.get(fcall_elem.dict["name"]).get(len(fcall_elem.dict["args"])) is not None:
+                func_to_call, closure = self.vars.get(fcall_elem.dict["name"]).get(len(fcall_elem.dict["args"]))
+                res = self.__do_function(func_to_call, fcall_elem.dict["args"], closure)
+            else:
+                super().error(ErrorType.NAME_ERROR,
+                    f'No matching function {(fcall_elem.dict["name"], len(fcall_elem.dict["args"]))} found.',
+                )
         
-        # TODO: add functions to scoping!
         # Else
         else:
             super().error(ErrorType.NAME_ERROR,
-                          f'No matching function {(fcall_elem.dict["name"], len(fcall_elem.dict["args"]))} found.',
+                f'No matching function {(fcall_elem.dict["name"], len(fcall_elem.dict["args"]))} found.',
             )
 
         return res
