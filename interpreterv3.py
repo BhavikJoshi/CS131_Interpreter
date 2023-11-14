@@ -20,8 +20,8 @@ class Interpreter(InterpreterBase):
     def __init__(self, console_output=True, inp=None, trace_output=False):
         super().__init__(console_output, inp)   # call InterpreterBase's constructor
         # Initialize needed variable
-        self.trace_output = trace_output
-        self.vars = VarScope()
+        self.trace_output = True#trace_output
+        self.vars = VarScope(self.trace_output)
         if self.trace_output:
             print("Interpreter initialized.")
 
@@ -32,7 +32,7 @@ class Interpreter(InterpreterBase):
         if self.trace_output:
             print("Got AST from parser.")
         # Reset program's variables
-        self.vars = VarScope()
+        self.vars = VarScope(self.trace_output)
         self.vars.push()
         # Run program if contains main function
         if ast.elem_type == "program":
@@ -65,13 +65,16 @@ class Interpreter(InterpreterBase):
 
     def __do_function(self, func_elem, args_expr, closure = None):
         # Verify function structure
-        if func_elem.elem_type != "func" or "name" not in func_elem.dict or "statements" not in func_elem.dict or "args" not in func_elem.dict:
+        if (func_elem.elem_type != "func" and func_elem.elem_type != "lambda") or "statements" not in func_elem.dict or "args" not in func_elem.dict:
             print("ERROR: Running __do_function on invalid function element! Aborting.")
         # Trace output
         if self.trace_output:
-            print(f'Running function: {func_elem.dict["name"]}.')
+            if func_elem.elem_type == "func":
+                print(f'Running function: {func_elem.dict["name"]}.')
+            elif func_elem.elem_type == "lambda":
+                print(f'Running lambda function.')
         # Function logic
-        self.vars.push(is_func = True)
+        self.vars.push(is_func = True, closure = closure)
         # Add all refargs
         for arg, arg_expr in zip(func_elem.dict["args"], args_expr):
             if arg.elem_type == "refarg":
@@ -84,7 +87,7 @@ class Interpreter(InterpreterBase):
             res, returns = self.__do_statement(statement)
             if returns == True:
                 break
-        self.vars.pop(is_func = True)
+        self.vars.pop(is_func = True, closure = closure)
         return res
 
     
@@ -256,7 +259,7 @@ class Interpreter(InterpreterBase):
         }
 
         VAR = ["var"]
-        VALUE = ["int", "string", "bool", "nil"]
+        VALUE = ["int", "string", "bool", "nil", "lambda"]
         EXPR = ["+", "-", '*', '/','==', '<', '<=', '>', '>=', '!=', 'neg', '!', '||', '&&']
         FCALL = ["fcall"]
 
@@ -285,14 +288,19 @@ class Interpreter(InterpreterBase):
         # Value type
         elif expr_elem.elem_type in VALUE:
             # Verify value structure
-            if expr_elem.elem_type != "nil" and "val" not in expr_elem.dict:
-                print("ERROR: Non-nil value expression has no val! Aborting.")
+            if (expr_elem.elem_type != "nil" and expr_elem.elem_type != "lambda") and "val" not in expr_elem.dict:
+                print("ERROR: Non-nil and non-lambda value expression has no val")
             # Trace output
             if self.trace_output:
-                print(f'Evaluting value w val {expr_elem.dict.get("val", None)}.')
+                print(f'Evaluting {expr_elem.elem_type} value w val {expr_elem.dict.get("val", None)}.')
             # Value logic
             if expr_elem.elem_type == "bool":
                 res = Interpreter.TRUE if expr_elem.dict["val"] else Interpreter.FALSE
+            elif expr_elem.elem_type == "lambda":
+                if "args" not in expr_elem.dict or "statements" not in expr_elem.dict:
+                    print(f"Error: Lambda function declaration node has no args or statements!")
+                num_args = len(expr_elem.dict["args"])
+                res = BrewinFunction(init_term = (num_args, expr_elem, copy.deepcopy(self.vars)))
             else:
                 res = expr_elem.dict.get("val", Interpreter.NIL)
 
@@ -387,8 +395,8 @@ class Interpreter(InterpreterBase):
                 func_to_call, closure = self.vars.get(fcall_elem.dict["name"]).get(len(fcall_elem.dict["args"]))
                 res = self.__do_function(func_to_call, fcall_elem.dict["args"], closure)
             else:
-                super().error(ErrorType.NAME_ERROR,
-                    f'No matching function {(fcall_elem.dict["name"], len(fcall_elem.dict["args"]))} found.',
+                super().error(ErrorType.TYPE_ERROR,
+                    f'Function {fcall_elem.dict["name"]} exists, but not with  {len(fcall_elem.dict["args"])} arguments.',
                 )
         
         # Else
@@ -438,7 +446,6 @@ class Interpreter(InterpreterBase):
         if isinstance(val, BrewinBool):
             return 1 if val.value else 0
         else:
-            return val
             super().error(ErrorType.TYPE_ERROR,
                 f"Condition expressions must be int or coerced bool to int types, got {type(val)}" ,
             )
