@@ -20,7 +20,7 @@ class Interpreter(InterpreterBase):
     def __init__(self, console_output=True, inp=None, trace_output=False):
         super().__init__(console_output, inp)   # call InterpreterBase's constructor
         # Initialize needed variable
-        self.trace_output = True#trace_output
+        self.trace_output = trace_output
         self.vars = VarScope(self.trace_output)
         if self.trace_output:
             print("Interpreter initialized.")
@@ -78,7 +78,7 @@ class Interpreter(InterpreterBase):
         # Add all refargs
         for arg, arg_expr in zip(func_elem.dict["args"], args_expr):
             if arg.elem_type == "refarg":
-                self.__add_refarg(self.vars, arg, arg_expr)
+                self.__add_refarg(self.vars, arg, arg_expr, closure)
         # Add all args
         for arg, arg_expr in zip(func_elem.dict["args"], args_expr):
             if arg.elem_type == "arg":
@@ -235,9 +235,9 @@ class Interpreter(InterpreterBase):
                     "==" : lambda bx, iy: Interpreter.TRUE if (bx.value == self.__coerce_to_bool(iy).value)  else Interpreter.FALSE,
                     "!=" : lambda bx, iy: Interpreter.TRUE if (bx.value != self.__coerce_to_bool(iy).value)  else Interpreter.FALSE,
                     "+"  :  lambda bx, iy: self.__coerce_to_int(bx) + iy,
-                    "-"  :  lambda bx, iy: self.__coerce_to_int(bx) + iy,
-                    "*"  :  lambda bx, iy: self.__coerce_to_int(bx) + iy,
-                    "/"  :  lambda bx, iy: self.__coerce_to_int(bx) + iy,
+                    "-"  :  lambda bx, iy: self.__coerce_to_int(bx) - iy,
+                    "*"  :  lambda bx, iy: self.__coerce_to_int(bx) * iy,
+                    "/"  :  lambda bx, iy: self.__coerce_to_int(bx) / iy,
         }
 
         FUNCTION_OPS = {
@@ -411,9 +411,9 @@ class Interpreter(InterpreterBase):
         if arg_elem.elem_type != "arg" or "name" not in arg_elem.dict:
             print(f"ERROR: Running __add_arg on invalid arg element {arg_elem.elem_type}")
         # Evaluate the expression and set to arg
-        vars.add_arg(arg_elem.dict["name"], self.__get_expr(expr_elem))
+        vars.add_arg(arg_elem.dict["name"], copy.deepcopy(self.__get_expr(expr_elem)))
 
-    def __add_refarg(self, vars, arg_elem, expr_elem):
+    def __add_refarg(self, vars, arg_elem, expr_elem, closure):
         if arg_elem.elem_type != "refarg" or "name" not in arg_elem.dict:
             print(f"ERROR: Running __add_refarg on invalid refarg element {arg_elem.elem_type}")
         # If the refarg expr is not a VAR, just evaluate and add as a normal argument
@@ -427,7 +427,7 @@ class Interpreter(InterpreterBase):
                 super().error(ErrorType.NAME_ERROR,
                             f"Variable {prev_name} has not been defined"
                 )
-            vars.add_alias(arg_elem.dict["name"], expr_elem.dict["name"])
+            vars.add_alias(arg_elem.dict["name"], expr_elem.dict["name"], closure)
 
 
     def __coerce_to_bool(self, val):
