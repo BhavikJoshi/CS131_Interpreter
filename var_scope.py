@@ -1,3 +1,5 @@
+from brewin_types import *
+
 class VarScope():
     def __init__(self, trace_output):
         self.trace_output = trace_output
@@ -5,6 +7,7 @@ class VarScope():
         self.__args = []
         self.__aliases = []
         self.__closures = []
+        self.__thises = []
     
     def push(self, is_func = False, closure = None):
         self.__vars.append({})
@@ -20,7 +23,17 @@ class VarScope():
             self.__aliases.pop()
             self.__closures.pop()
 
+    def push_this(self, obj):
+        self.__thises.append(obj)
+    
+    def pop_this(self):
+        self.__thises.pop()
+
     def get(self, key, default=None):
+        # If we are referring to a this, check the thises stack
+        res = default
+        if key == "this" and len(self.__thises) > 0:
+            return self.__thises[-1]
         # Use alias instead if there is one
         key = self.__get_alias(key)
         # Check stack of arguments for the key
@@ -30,18 +43,21 @@ class VarScope():
         # Check most recent closures for the key
         for c in reversed(self.__closures):
             if c is not None and c.get(key) is not None:
-                return c.get(key)
+                res = c.get(key)
+                if not isinstance(res, BrewinFunction) and not isinstance(res, BrewinObject):
+                    return res
         # Check all dicts for the key (order doesn't matter since they are unique)
         for d in reversed(self.__vars):
             if key in d:
                 return d[key]
-        return default
+        return res
 
     def set(self, keyo, val):
         # Use alias instead if there is one
         key = self.__get_alias(keyo)
         # If the variable doesn't exist yet
-        if self.get(key, None) is None:
+        old_var = self.get(key, None)
+        if old_var is None:
             self.__vars[-1][key] = val
         # If the variable exists
         else:
@@ -51,10 +67,11 @@ class VarScope():
                     d[key] = val
                     return
             # Then check in most recent closures
-            for c in reversed(self.__closures):
-                if c is not None and c.get(key) is not None:
-                    c.set(key, val)
-                    return
+            if not isinstance(old_var, BrewinFunction) and not isinstance(old_var, BrewinObject):
+                for c in reversed(self.__closures):
+                    if c is not None and c.get(key) is not None:
+                        c.set(key, val)
+                        return
             # Then check in non-arg variables
             for d in reversed(self.__vars):
                 if key in d:

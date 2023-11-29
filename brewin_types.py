@@ -23,3 +23,30 @@ class BrewinFunction():
         return self.overloads.get(args, default)
     def is_overloaded(self):
         return True if len(self.overloads) > 1 else False
+
+class BrewinObject():
+
+    NIL = BrewinNil()
+
+    def __init__(self):
+        self.members = {}
+        self.proto = BrewinObject.NIL
+
+    def get_member(self, mem):
+        if mem == "proto":
+            if self.proto is BrewinObject.NIL:
+                return None
+            return self.proto
+        elif mem in self.members:
+            return self.members[mem]
+        elif not isinstance(self.proto, BrewinNil):
+            return self.proto.get_member(mem)
+        return None
+
+    def set_member(self, mem, data):
+        # If the member name is proto: set the proto
+        if mem == "proto":
+            self.proto = data
+        # Otherwise, set locally (will shadow proto)
+        else:
+            self.members[mem] = data
