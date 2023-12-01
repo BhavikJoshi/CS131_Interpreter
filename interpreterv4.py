@@ -201,10 +201,11 @@ class Interpreter(InterpreterBase):
         elif statement_elem.elem_type == "mcall":
             if "objref" not in statement_elem.dict or "name" not in statement_elem.dict or "args" not in statement_elem.dict:
                 print("ERROR: Invalid strucuture of mcall node.")
-            obj = self.vars.get(statement_elem.dict["objref"], None)
+            obj_name = statement_elem.dict["objref"]
+            obj = self.vars.get(obj_name, None)
             if obj is None:
                 super().error(ErrorType.NAME_ERROR,
-                            f'Object {statement_elem.dict["objref"]} has not been defined'
+                            f'Object {obj_name} has not been defined'
                 )
             if not isinstance(obj, BrewinObject):
                 super().error(ErrorType.TYPE_ERROR,
@@ -213,18 +214,20 @@ class Interpreter(InterpreterBase):
             mfunc = obj.get_member(statement_elem.dict["name"])
             if mfunc is None:
                 super().error(ErrorType.NAME_ERROR,
-                            f'Object {statement_elem.dict["objref"]}s function {statement_elem.dict["name"]} has not been defined'
+                            f'Object {obj_name}s function {statement_elem.dict["name"]} has not been defined'
                 )
             if not isinstance(mfunc, BrewinFunction):
                 super().error(ErrorType.TYPE_ERROR,
-                    f'Cannot treat non function variable {statement_elem.dict["objref"]} {statement_elem.dict["name"] }as a function.',
+                    f'Cannot treat non function variable {obj_name} {statement_elem.dict["name"] }as a function.',
                 )
             elif mfunc.get(len(statement_elem.dict["args"])) is not None:
                 func_to_call, closure = mfunc.get(len(statement_elem.dict["args"]))
-                # Add this object to the stack of thises
-                self.vars.push_this(obj)
+                # Add this object name to the stack of thises
+                if obj_name != "this":
+                    self.vars.push_this(obj_name)
                 res, returns = self.__do_function(func_to_call, statement_elem.dict["args"], closure), False
-                self.vars.pop_this()
+                if obj_name != "this":
+                    self.vars.pop_this()
             else:
                 super().error(ErrorType.NAME_ERROR,
                     f'Function {statement_elem.dict["name"]} exists, but not with {len(statement_elem.dict["args"])} arguments.',

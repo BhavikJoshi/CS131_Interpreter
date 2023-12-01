@@ -23,8 +23,8 @@ class VarScope():
             self.__aliases.pop()
             self.__closures.pop()
 
-    def push_this(self, obj):
-        self.__thises.append(obj)
+    def push_this(self, obj_name):
+        self.__thises.append(obj_name)
     
     def pop_this(self):
         self.__thises.pop()
@@ -33,7 +33,7 @@ class VarScope():
         # If we are referring to a this, check the thises stack
         res = default
         if key == "this" and len(self.__thises) > 0:
-            return self.__thises[-1]
+            key = self.__thises[-1]
         # Use alias instead if there is one
         key = self.__get_alias(key)
         # Check stack of arguments for the key
@@ -52,9 +52,11 @@ class VarScope():
                 return d[key]
         return res
 
-    def set(self, keyo, val):
+    def set(self, key, val):
         # Use alias instead if there is one
-        key = self.__get_alias(keyo)
+        if key == "this" and len(self.__thises) > 0:
+            key = self.__thises[-1]
+        key = self.__get_alias(key)
         # If the variable doesn't exist yet
         old_var = self.get(key, None)
         if old_var is None:
@@ -65,13 +67,13 @@ class VarScope():
             for d in reversed(self.__args):
                 if key in d:
                     d[key] = val
-                    return
+                    return    
             # Then check in most recent closures
             if not isinstance(old_var, BrewinFunction) and not isinstance(old_var, BrewinObject):
                 for c in reversed(self.__closures):
                     if c is not None and c.get(key) is not None:
                         c.set(key, val)
-                        return
+                        return     
             # Then check in non-arg variables
             for d in reversed(self.__vars):
                 if key in d:

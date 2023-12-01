@@ -1,20 +1,28 @@
 from element import *
 
-class BrewinNil():
+
+class BrewinType():
     def __init__(self):
-        pass
+        self.captured_by_ref = False
+
+class BrewinNil(BrewinType):
+    def __init__(self):
+        super().__init__()
     def __str__(self):
         return "nil"
 
-class BrewinBool():
+class BrewinBool(BrewinType):
     def __init__(self, val):
+        super().__init__()
         self.value = val
     def __str__(self):
         return "true" if self.value else "false"
 
-class BrewinFunction():
+class BrewinFunction(BrewinType):
     def __init__(self, init_term = (None, None, None)):
-        if init_term is not (None, None):
+        super().__init__()
+        self.captured_by_ref = True
+        if init_term is not (None, None, None):
             k, v, c = init_term
             self.overloads = {k: (v, c)}
     def set(self, args, func_elem, closure = None):
@@ -24,11 +32,13 @@ class BrewinFunction():
     def is_overloaded(self):
         return True if len(self.overloads) > 1 else False
 
-class BrewinObject():
+class BrewinObject(BrewinType):
 
     NIL = BrewinNil()
 
     def __init__(self):
+        super().__init__()
+        self.captured_by_ref = True
         self.members = {}
         self.proto = BrewinObject.NIL
 
